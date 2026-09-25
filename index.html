@@ -1,3 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Without this tag phones lay the page out at 980px and shrink it to fit. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual">
+<!-- Stops iOS from turning the long digit code into a phone-number link. -->
+<meta name="format-detection" content="telephone=no">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)">
 <title>Availability Painter</title>
 <style>
   :root {
@@ -25,6 +36,11 @@
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
     --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    /* Safe-area insets (notch, home indicator, landscape side notch). */
+    --sa-t: env(safe-area-inset-top, 0px);
+    --sa-r: env(safe-area-inset-right, 0px);
+    --sa-b: env(safe-area-inset-bottom, 0px);
+    --sa-l: env(safe-area-inset-left, 0px);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -74,31 +90,40 @@
     --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
   }
 
+  /* ═══════════════════════════════════════════════════════════════
+     BASE = PHONE, PORTRAIT. Everything below the base section only
+     adds or overrides for wider, shorter, or mouse-driven screens.
+     ═══════════════════════════════════════════════════════════════ */
+
   * { box-sizing: border-box; }
   html, body { height: 100%; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--label);
     font-family: var(--font); font-size: 15px; line-height: 1.4;
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
     overflow: hidden;
+    overscroll-behavior: none;           /* no pull-to-refresh or rubber-band on the painter */
   }
   button, input { font: inherit; color: inherit; }
-  button { cursor: pointer; border: 0; background: transparent; }
+  button { cursor: pointer; border: 0; background: transparent; touch-action: manipulation; }
   [hidden] { display: none !important; }
   :focus { outline: none; }
   :focus-visible { outline: 3px solid var(--accent-tint); outline-offset: 1px; border-radius: 6px; }
   .num { font-variant-numeric: tabular-nums; }
+  .sr { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  kbd { display: none; }
 
   /* ---------- Shell ---------- */
 
-  .app { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+  .app { height: 100%; height: 100dvh; display: flex; flex-direction: column; min-height: 0; }
   .pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 
   .topbar {
     flex: none;
-    padding: 9px 14px 10px;
-    padding-top: calc(9px + env(safe-area-inset-top, 0px));
+    padding: 8px max(12px, var(--sa-r)) 8px max(12px, var(--sa-l));
+    padding-top: max(8px, var(--sa-t));
     background: var(--toolbar);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
     backdrop-filter: saturate(180%) blur(20px);
@@ -106,53 +131,66 @@
     display: flex; flex-direction: column; gap: 8px;
   }
   .tbrow { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .tbrow h1 {
+  .topbar h1 {
     font-family: var(--font-display);
     font-size: 17px; font-weight: 700; letter-spacing: -0.02em;
     margin: 0; flex: 1; min-width: 0;
   }
-  .tbrow h1 .sub { display: block; font-size: 11.5px; font-weight: 400; color: var(--label-2); letter-spacing: 0; }
+  .topbar h1 .sub { display: block; font-size: 12px; font-weight: 400; color: var(--label-2); letter-spacing: 0; }
   .tb-btn {
-    flex: none; height: 32px; padding: 0 13px; border-radius: 999px;
-    font-size: 14px; font-weight: 600; color: var(--accent); background: var(--fill-2);
+    position: relative;
+    flex: none; height: 36px; padding: 0 15px; border-radius: 999px;
+    font-size: 15px; font-weight: 600; color: var(--accent); background: var(--fill-2);
   }
+  .tb-btn::after { content: ""; position: absolute; inset: -5px -3px; }   /* ~46px touch target */
   .tb-btn.solid { background: var(--accent); color: #fff; }
 
+  /* Paint pane: one compact row on phones, name field + Done. */
+  .paintbar { flex-direction: row; align-items: center; gap: 8px; }
+  .paintbar h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .namefield {
-    width: 100%; height: 38px; padding: 0 12px;
+    flex: 1; min-width: 0; width: 100%; height: 40px; padding: 0 12px;
     border-radius: var(--r-ctl); border: 0;
     background: var(--surface); color: var(--label);
     box-shadow: inset 0 0 0 0.5px var(--sep);
+    font-size: 16px;                     /* 16px or larger: iOS does not zoom in on focus */
   }
   .namefield::placeholder { color: var(--label-3); }
   .namefield:invalid { box-shadow: inset 0 0 0 1.5px var(--orange); }
 
   /* ---------- Week grid ---------- */
+  /* Portrait: days across the top, times down the side. */
 
-  .weekwrap { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 0 12px 6px; position: relative; }
-
-  .dayhead { flex: none; display: flex; padding: 7px 0 5px; }
-  .dayhead .spacer { width: 36px; flex: none; }
-  .dayhead .days { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
-  .dayhead button {
-    padding: 4px 0 5px; border-radius: 7px;
-    font-size: 12.5px; font-weight: 600; color: var(--label-2);
-    background: var(--fill-2);
-    display: flex; flex-direction: column; align-items: center; gap: 1px;
+  .weekwrap {
+    flex: 1; min-height: 0; position: relative;
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: ". days" "gutter cols";
+    row-gap: 6px;
+    padding: 6px max(10px, var(--sa-r)) 10px max(0px, var(--sa-l));
   }
-  .dayhead button b { font-size: 9.5px; font-weight: 600; color: var(--label-3); }
-  .dayhead button.marked b { color: var(--red); }
 
-  .week { flex: 1; display: flex; min-height: 0; }
-  .gutter { width: 36px; flex: none; position: relative; }
+  .days { grid-area: days; display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
+  .days button {
+    min-height: 40px; padding: 3px 0 4px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; color: var(--label-2);
+    background: var(--fill-2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  }
+  .days button b { font-size: 10.5px; font-weight: 600; color: var(--label-3); }
+  .days button.marked b { color: var(--red); }
+
+  .gutter { grid-area: gutter; position: relative; }
   .gutter span {
-    position: absolute; right: 7px; transform: translateY(-50%);
-    font-size: 10px; color: var(--label-3);
+    position: absolute; right: 5px; top: var(--p); transform: translateY(-50%);
+    font-size: 10.5px; color: var(--label-3);
     font-variant-numeric: tabular-nums; white-space: nowrap;
   }
   .cols {
-    flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px;
-    touch-action: none; -webkit-user-select: none; user-select: none;
+    grid-area: cols; min-height: 0;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px;
+    touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   }
   .col {
     display: grid; grid-template-rows: repeat(26, 1fr);
@@ -160,43 +198,59 @@
     box-shadow: 0 0 0 0.5px var(--sep);
   }
   .cell { border-top: 0.5px solid var(--fill-2); }
-  .cell.hr { border-top: 0.5px solid var(--sep); }
+  .cell.hr { border-top-color: var(--sep); }
   .cell:first-child { border-top: 0; }
   .cell[data-s="1"] { background: var(--orange-cell); }
   .cell[data-s="2"] { background: var(--red-cell); }
 
   .hint {
-    position: absolute; left: 22px; right: 22px; top: 44%;
-    padding: 13px 16px; border-radius: 12px;
+    position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+    width: min(360px, calc(100% - 40px));
+    padding: 14px 16px; border-radius: 12px;
     background: var(--label); color: var(--bg);
-    font-size: 13.5px; line-height: 1.45; text-align: center;
+    font-size: 14px; line-height: 1.45; text-align: center;
     box-shadow: var(--shadow-lift);
     pointer-events: none; z-index: 8;
     transition: opacity 0.25s ease;
   }
+  .hint strong { display: block; font-size: 15.5px; margin-bottom: 4px; }
   .hint.gone { opacity: 0; }
-  @media (prefers-reduced-motion: reduce) { .hint { transition: none; } }
+
+  /* Live readout while painting: your finger hides the cells and the time labels. */
+  .readout {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    top: 4px;
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 14px; border-radius: 999px;
+    background: var(--label); color: var(--bg);
+    font-size: 14.5px; font-weight: 600; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    box-shadow: var(--shadow-lift);
+    pointer-events: none; z-index: 9;
+  }
+  .readout.low { top: auto; bottom: 14px; }
+  .readout i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .readout span { font-weight: 400; opacity: 0.8; }
 
   /* ---------- Brush bar ---------- */
 
   .brushbar {
     flex: none; display: flex; gap: 6px; align-items: center;
-    padding: 8px 12px;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    padding: 8px max(12px, var(--sa-r)) max(8px, var(--sa-b)) max(12px, var(--sa-l));
     background: var(--toolbar);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
     backdrop-filter: saturate(180%) blur(20px);
     border-top: 0.5px solid var(--sep-strong);
   }
-  .brushes { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .brushes { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .brush {
-    height: 46px; border-radius: var(--r-ctl);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-    font-size: 13.5px; font-weight: 600;
+    height: 48px; border-radius: var(--r-ctl);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-size: 14px; font-weight: 600;
     background: var(--fill-2); color: var(--label-2);
     box-shadow: inset 0 0 0 1.5px transparent;
   }
-  .brush .swatch { width: 22px; height: 5px; border-radius: 3px; background: var(--fill); }
+  .brush .swatch { width: 24px; height: 5px; border-radius: 3px; background: var(--fill); }
   .brush[data-b="2"] .swatch { background: var(--red); }
   .brush[data-b="1"] .swatch { background: var(--orange); }
   .brush[data-b="0"] .swatch { background: var(--sep-strong); }
@@ -205,85 +259,204 @@
     box-shadow: inset 0 0 0 1.5px var(--accent), var(--shadow-lift);
   }
   .undo {
-    flex: none; width: 46px; height: 46px; border-radius: var(--r-ctl);
+    flex: none; width: 48px; height: 48px; border-radius: var(--r-ctl);
     background: var(--fill-2); color: var(--label-2);
     display: flex; align-items: center; justify-content: center;
   }
-  .undo:disabled { opacity: 0.3; }
-  .undo svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .undo:disabled { opacity: 0.3; cursor: default; }
+  .undo svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
   /* ---------- Day view ---------- */
 
-  .daylist { flex: 1; overflow-y: auto; padding: 10px 16px 24px; touch-action: pan-y; }
+  .dayseg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 2px; border-radius: 9px; background: var(--fill); }
+  .dayseg button { height: 34px; border-radius: 7px; font-size: 14px; font-weight: 600; color: var(--label-2); }
+  .dayseg button[aria-pressed="true"] { background: var(--surface); color: var(--label); box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 0 0 0.5px var(--sep); }
+
+  .daylist {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain; touch-action: pan-y;
+    padding: 12px max(14px, var(--sa-r)) 24px max(14px, var(--sa-l));
+  }
+  .daylist .inner, .codewrap .inner { max-width: 560px; margin: 0 auto; }
   .dayrows { background: var(--surface); border-radius: var(--r-group); overflow: hidden; box-shadow: 0 0 0 0.5px var(--sep); }
   .drow {
     display: flex; align-items: center; gap: 12px;
-    width: 100%; min-height: 46px; padding: 0 14px;
+    width: 100%; min-height: 48px; padding: 0 14px;
     border-top: 0.5px solid var(--sep); text-align: left;
     -webkit-user-select: none; user-select: none;
   }
   .drow:first-child { border-top: 0; }
-  .drow .t { flex: 1; font-size: 14px; font-variant-numeric: tabular-nums; }
-  .drow .tag { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--fill-2); color: var(--label-3); }
+  .drow .t { flex: 1; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .drow .tag { font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--fill-2); color: var(--label-3); }
   .drow[data-s="1"] { background: color-mix(in srgb, var(--orange) 16%, transparent); }
   .drow[data-s="1"] .tag { background: var(--orange); color: #fff; }
   .drow[data-s="2"] { background: color-mix(in srgb, var(--red) 16%, transparent); }
   .drow[data-s="2"] .tag { background: var(--red); color: #fff; }
-  .dayacts { display: flex; gap: 8px; margin-bottom: 10px; }
-  .dayacts button { flex: 1; height: 38px; border-radius: var(--r-ctl); background: var(--fill-2); color: var(--accent); font-size: 14px; font-weight: 600; }
+  .dayacts { display: flex; gap: 8px; margin-bottom: 12px; }
+  .dayacts button { flex: 1; height: 44px; border-radius: var(--r-ctl); background: var(--fill-2); color: var(--accent); font-size: 15px; font-weight: 600; }
 
-  /* ---------- Code pane ---------- */
+  /* ---------- Send pane ---------- */
 
-  .codewrap { flex: 1; overflow-y: auto; padding: 18px 16px 32px; }
-  .codewrap .inner { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .codewrap {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    padding: 16px max(14px, var(--sa-r)) max(28px, var(--sa-b)) max(14px, var(--sa-l));
+  }
+  .codewrap .inner { display: flex; flex-direction: column; gap: 14px; }
   .card { background: var(--surface); border-radius: var(--r-group); box-shadow: 0 0 0 0.5px var(--sep); padding: 16px; }
-  .card h2 { font-family: var(--font-display); font-size: 15px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
-  .card p { margin: 0; font-size: 13.5px; color: var(--label-2); }
+  .card h2 { font-family: var(--font-display); font-size: 16px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .card p { margin: 0; font-size: 14px; color: var(--label-2); }
   .card p + p { margin-top: 8px; }
-  .whoami { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
-  .whoami .n { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .whoami button { flex: none; font-size: 13px; font-weight: 600; color: var(--accent); }
+  .whoami { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .whoami .n { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .whoami button { flex: none; font-size: 15px; font-weight: 600; color: var(--accent); padding: 10px 4px; margin: -10px -4px; }
   .code {
     margin-top: 10px; padding: 12px; background: var(--surface-2); border-radius: var(--r-ctl);
-    font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+    font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
     word-break: break-all; -webkit-user-select: all; user-select: all;
   }
   .bigbtn {
     margin-top: 12px; width: 100%; height: 50px; border-radius: var(--r-ctl);
-    font-size: 16px; font-weight: 600;
+    font-size: 17px; font-weight: 600;
     background: var(--accent); color: #fff;
     display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .bigbtn.ok { background: var(--green); }
   .bigbtn.ghost { background: var(--fill-2); color: var(--accent); }
   .bigbtn:disabled { background: var(--fill); color: var(--label-3); cursor: default; }
-  .stepnote { margin-top: 9px; font-size: 12.5px; color: var(--label-2); text-align: center; }
+  .stepnote { margin-top: 9px; font-size: 13px; color: var(--label-2); text-align: center; }
   .stepnote.warn { color: var(--orange); }
-  .summary { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
-  .srow { display: flex; align-items: baseline; gap: 10px; font-size: 13.5px; }
-  .srow .d { width: 34px; flex: none; font-weight: 600; color: var(--label-2); }
+  .summary { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .srow { display: flex; align-items: baseline; gap: 10px; font-size: 14px; }
+  .srow .d { width: 36px; flex: none; font-weight: 600; color: var(--label-2); }
   .srow .v { flex: 1; font-variant-numeric: tabular-nums; }
   .srow .v.none { color: var(--label-3); }
-  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12.5px; color: var(--label-2); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; color: var(--label-2); }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
 
   .toast {
     position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(max(8px, var(--sa-b)) + 72px);     /* clears the brush bar */
+    max-width: calc(100% - 32px);
     background: var(--label); color: var(--bg);
-    padding: 9px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 500;
+    padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 500; text-align: center;
     box-shadow: var(--shadow-lift); z-index: 40; pointer-events: none;
     opacity: 0; transition: opacity 0.18s ease;
   }
   .toast.show { opacity: 1; }
-  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+  @media (prefers-reduced-motion: reduce) { .hint, .toast { transition: none; } }
+
+  /* ═══════════════════════════════════════════════════════════════
+     SHORT + WIDE (phone turned sideways, or a short desktop window).
+     Transpose the grid — days become rows, times run left to right —
+     and move the brushes into a rail on the right.
+     ═══════════════════════════════════════════════════════════════ */
+
+  @media (orientation: landscape) and (max-height: 540px) {
+    #paintPane {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    #paintPane .topbar { grid-column: 1 / -1; padding-top: max(6px, var(--sa-t)); padding-bottom: 6px; }
+    #paintPane .namefield { height: 38px; }
+
+    .weekwrap {
+      grid-template-columns: auto 1fr;
+      grid-template-rows: 18px minmax(0, 1fr);
+      grid-template-areas: ". gutter" "days cols";
+      column-gap: 5px; row-gap: 2px;
+      padding: 4px 18px max(8px, var(--sa-b)) max(10px, var(--sa-l));
+    }
+    .days { grid-template-columns: none; grid-template-rows: repeat(5, 1fr); }
+    .days button { min-height: 0; width: 50px; padding: 0 4px; font-size: 12.5px; }
+    .days button b { font-size: 10px; }
+    .gutter span { top: auto; right: auto; bottom: 3px; left: var(--p); transform: translateX(-50%); }
+    .cols { grid-template-columns: none; grid-template-rows: repeat(5, 1fr); }
+    .col { grid-template-rows: none; grid-template-columns: repeat(26, 1fr); }
+    .cell, .cell.hr { border-top: 0; border-left: 0.5px solid var(--fill-2); }
+    .cell.hr { border-left-color: var(--sep); }
+    .cell:first-child { border-left: 0; }
+    .hint { top: 50%; }
+    .readout.low { bottom: 10px; }
+
+    #paintPane .brushbar {
+      flex-direction: column; justify-content: center; gap: 6px;
+      border-top: 0; border-left: 0.5px solid var(--sep-strong);
+      padding: 8px max(10px, var(--sa-r)) max(8px, var(--sa-b)) 8px;
+    }
+    #paintPane .brushes { flex: none; grid-template-columns: 1fr; gap: 6px; }
+    #paintPane .brush { width: 84px; height: 44px; }
+    #paintPane .undo { width: 84px; height: 44px; }
+
+    .toast { bottom: calc(max(8px, var(--sa-b)) + 12px); }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     TABLET AND DESKTOP LAYOUT (wide and tall enough).
+     Centre everything in a readable column; bring the title back.
+     ═══════════════════════════════════════════════════════════════ */
+
+  @media (min-width: 768px) and (min-height: 541px) {
+    :root { --col: 860px; --gutter-x: max(24px, calc((100vw - var(--col)) / 2)); }
+
+    .topbar { padding-left: var(--gutter-x); padding-right: var(--gutter-x); padding-top: max(12px, var(--sa-t)); padding-bottom: 12px; }
+    .paintbar { gap: 14px; }
+    .paintbar h1 { position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal; font-size: 20px; }
+    .paintbar .namefield { flex: none; width: 300px; }
+    .topbar h1 { font-size: 20px; }
+
+    /* The 50px time gutter hangs left of the centred column so the grid lines up with the top bar. */
+    .weekwrap { grid-template-columns: 50px 1fr; padding: 12px var(--gutter-x) 14px max(4px, calc(var(--gutter-x) - 50px)); }
+    .days { gap: 5px; }
+    .cols { gap: 5px; }
+    .days button { min-height: 46px; font-size: 14px; }
+    .days button b { font-size: 11.5px; }
+    .gutter span { font-size: 12px; right: 10px; }
+
+    .brushbar { padding-left: var(--gutter-x); padding-right: var(--gutter-x); padding-bottom: max(12px, var(--sa-b)); padding-top: 12px; }
+    .brushes { gap: 8px; }
+    .brush { flex-direction: row; gap: 9px; height: 46px; font-size: 15px; }
+    .brush .swatch { width: 14px; height: 14px; border-radius: 4px; }
+
+    .daylist, .codewrap { padding-top: 22px; }
+    .toast { bottom: calc(max(12px, var(--sa-b)) + 80px); }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     MOUSE / TRACKPAD. Hover previews, crosshair, keyboard hints.
+     Applies by input type, not screen size, so touch laptops and
+     iPads with a trackpad get it only when a fine pointer is primary.
+     ═══════════════════════════════════════════════════════════════ */
+
+  @media (hover: hover) and (pointer: fine) {
+    .cols { cursor: crosshair; --hover: var(--red); }
+    .cols[data-brush="1"] { --hover: var(--orange); }
+    .cols[data-brush="0"] { --hover: var(--label-3); }
+    .cols:not(.stroking) .cell:hover { box-shadow: inset 0 0 0 2px var(--hover); }
+
+    .tb-btn:hover { background: var(--fill); }
+    .tb-btn.solid:hover { background: var(--accent); filter: brightness(1.08); }
+    .days button:hover, .dayacts button:hover, .bigbtn.ghost:hover, .dayseg button:not([aria-pressed="true"]):hover { background: var(--fill); }
+    .brush:not([aria-pressed="true"]):hover { background: var(--fill); color: var(--label); }
+    .undo:not(:disabled):hover { background: var(--fill); color: var(--label); }
+    .drow:hover { box-shadow: inset 3px 0 0 var(--accent); }
+    .bigbtn:not(.ghost):not(:disabled):hover { filter: brightness(1.08); }
+
+    kbd {
+      display: inline-block; margin-left: auto;
+      font: 600 11px/1 var(--font-mono); color: var(--label-3);
+      padding: 3px 5px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--sep);
+    }
+    .brush kbd { margin-left: 2px; }
+  }
 
   /* ---------- Print ---------- */
 
   .printsheet { display: none; }
   @media print {
-    body { overflow: visible; background: #fff; color: #000; }
+    html, body { height: auto; overflow: visible; background: #fff; color: #000; }
     .app, .toast { display: none !important; }
     .printsheet { display: block; padding: 0; font-family: var(--font); color: #000; }
     .printsheet h1 { font-size: 19px; margin: 0 0 2px; }
@@ -299,43 +472,41 @@
     .printsheet li { margin-bottom: 2px; }
   }
 </style>
+</head>
+<body>
 
 <div class="app">
 
   <!-- ============ PAINT ============ -->
   <section class="pane" id="paintPane">
-    <header class="topbar">
-      <div class="tbrow">
-        <h1>Your busy times</h1>
-        <button class="tb-btn solid" id="doneBtn">Done</button>
-      </div>
+    <header class="topbar paintbar">
+      <h1>Your busy times<span class="sub">Monday to Friday, 8 AM to 9 PM</span></h1>
       <input class="namefield" id="nameInput" type="text" required minlength="2"
-             placeholder="Your first and last name" autocomplete="name" spellcheck="false"
+             placeholder="Your first and last name" autocomplete="name"
+             autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="done"
              aria-label="Your first and last name">
+      <button class="tb-btn solid" id="doneBtn">Done</button>
     </header>
 
-    <div class="weekwrap">
-      <div class="dayhead">
-        <div class="spacer"></div>
-        <div class="days" id="dayHead"></div>
-      </div>
-      <div class="week">
-        <div class="gutter" id="gutter"></div>
-        <div class="cols" id="cols"></div>
-      </div>
+    <div class="weekwrap" id="weekwrap">
+      <div class="days" id="dayHead"></div>
+      <div class="gutter" id="gutter" aria-hidden="true"></div>
+      <div class="cols" id="cols" data-brush="2"></div>
       <div class="hint" id="hint" hidden>
-        Pick a brush below, then drag down a day to mark when you’re busy.<br>
-        Tap a day name to fix single half-hours.
+        <strong>Paint your busy times</strong>
+        Pick a brush, then drag along a day to paint when you’re busy.<br>
+        Tap a day name to set single half-hours.
       </div>
+      <div class="readout" id="readout" hidden aria-hidden="true"></div>
     </div>
 
     <footer class="brushbar">
       <div class="brushes" id="brushes">
-        <button class="brush" data-b="2" aria-pressed="true"><span class="swatch"></span>Busy</button>
-        <button class="brush" data-b="1" aria-pressed="false"><span class="swatch"></span>Avoid</button>
-        <button class="brush" data-b="0" aria-pressed="false"><span class="swatch"></span>Erase</button>
+        <button class="brush" data-b="2" aria-pressed="true"><span class="swatch"></span>Busy<kbd>B</kbd></button>
+        <button class="brush" data-b="1" aria-pressed="false"><span class="swatch"></span>Avoid<kbd>A</kbd></button>
+        <button class="brush" data-b="0" aria-pressed="false"><span class="swatch"></span>Erase<kbd>E</kbd></button>
       </div>
-      <button class="undo" id="undoBtn" disabled aria-label="Undo last stroke">
+      <button class="undo" id="undoBtn" disabled aria-label="Undo last stroke" title="Undo (Ctrl/⌘ Z)">
         <svg viewBox="0 0 20 20"><path d="M7 5L4 8l3 3"/><path d="M4 8h8.5a3.8 3.8 0 010 7.6H9"/></svg>
       </button>
     </footer>
@@ -348,21 +519,24 @@
         <button class="tb-btn" id="dayBack">Week</button>
         <h1 id="dayTitle">Monday<span class="sub">Tap a row to set it with the current brush.</span></h1>
       </div>
+      <div class="dayseg" id="daySeg" role="group" aria-label="Day"></div>
     </header>
     <div class="daylist">
-      <div class="dayacts">
-        <button id="fillDay">Fill day</button>
-        <button id="clearDay">Clear day</button>
+      <div class="inner">
+        <div class="dayacts">
+          <button id="fillDay">Fill day</button>
+          <button id="clearDay">Clear day</button>
+        </div>
+        <div class="dayrows" id="dayRows"></div>
       </div>
-      <div class="dayrows" id="dayRows"></div>
     </div>
     <footer class="brushbar">
       <div class="brushes" id="brushes2">
-        <button class="brush" data-b="2" aria-pressed="true"><span class="swatch"></span>Busy</button>
-        <button class="brush" data-b="1" aria-pressed="false"><span class="swatch"></span>Avoid</button>
-        <button class="brush" data-b="0" aria-pressed="false"><span class="swatch"></span>Erase</button>
+        <button class="brush" data-b="2" aria-pressed="true"><span class="swatch"></span>Busy<kbd>B</kbd></button>
+        <button class="brush" data-b="1" aria-pressed="false"><span class="swatch"></span>Avoid<kbd>A</kbd></button>
+        <button class="brush" data-b="0" aria-pressed="false"><span class="swatch"></span>Erase<kbd>E</kbd></button>
       </div>
-      <button class="undo" id="undoBtn2" disabled aria-label="Undo last stroke">
+      <button class="undo" id="undoBtn2" disabled aria-label="Undo last change" title="Undo (Ctrl/⌘ Z)">
         <svg viewBox="0 0 20 20"><path d="M7 5L4 8l3 3"/><path d="M4 8h8.5a3.8 3.8 0 010 7.6H9"/></svg>
       </button>
     </footer>
@@ -410,7 +584,7 @@
         <div class="card">
           <h2>Changed your mind?</h2>
           <p>Tap Edit, repaint, and send the new code. The most recent one you send is the one that counts.</p>
-          <p>Your painting is saved on this phone, so you can come back to it later.</p>
+          <p>Your painting is saved on this device, so you can come back to it later.</p>
         </div>
 
       </div>
@@ -441,6 +615,9 @@
   var DAY_LONG = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday' };
   var START_MIN = 8 * 60, SLOTS = 26, STEP = 30, PREFIX = 'AV1';
   var STORAGE_KEY = 'percAvail.paint.v1';
+  var BRUSH_NAME = ['Erase', 'Avoid', 'Busy'];
+  var BRUSH_COLOR = ['var(--label-3)', 'var(--orange)', 'var(--red)'];
+  var FINE_POINTER = window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
 
   function pad2(n) { return n < 10 ? '0' + n : String(n); }
   function slotStart(k) { return START_MIN + k * STEP; }
@@ -449,8 +626,13 @@
     if (short && m === 0) return h12 + ' ' + suf;
     return h12 + ':' + pad2(m) + ' ' + suf;
   }
+  function fmtRange(a, b) {
+    var sa = fmtClock(a), sb = fmtClock(b);
+    return sa.slice(-2) === sb.slice(-2) ? sa.slice(0, -3) + '–' + sb : sa + ' – ' + sb;
+  }
   function slotLabel(k) { return fmtClock(slotStart(k)) + ' – ' + fmtClock(slotStart(k) + STEP); }
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
   // ───────────────────────── State ─────────────────────────
 
@@ -462,13 +644,13 @@
 
   var el = function (id) { return document.getElementById(id); };
   var paintPane = el('paintPane'), dayPane = el('dayPane'), codePane = el('codePane');
-  var colsEl = el('cols'), gutterEl = el('gutter'), dayHeadEl = el('dayHead');
-  var dayRowsEl = el('dayRows'), dayTitleEl = el('dayTitle');
+  var weekwrapEl = el('weekwrap'), colsEl = el('cols'), gutterEl = el('gutter'), dayHeadEl = el('dayHead');
+  var dayRowsEl = el('dayRows'), dayTitleEl = el('dayTitle'), daySegEl = el('daySeg');
   var nameInput = el('nameInput'), codeOutEl = el('codeOut'), summaryEl = el('summary');
   var copyBtn = el('copyBtn'), copyNote = el('copyNote');
   var formBtn = el('formBtn'), formNote = el('formNote'), formCard = el('formCard');
   var undoBtn = el('undoBtn'), undoBtn2 = el('undoBtn2');
-  var hintEl = el('hint'), toastEl = el('toast'), printSheetEl = el('printSheet');
+  var hintEl = el('hint'), readoutEl = el('readout'), toastEl = el('toast'), printSheetEl = el('printSheet');
 
   // ───────────────────────── Encode / decode ─────────────────────────
 
@@ -491,10 +673,13 @@
 
   // ───────────────────────── Undo ─────────────────────────
 
-  function pushUndo() {
+  function snapshot() {
     var s = {};
     DAYS.forEach(function (d) { s[d] = grid[d].slice(); });
-    undoStack.push(s);
+    return s;
+  }
+  function pushUndo() {
+    undoStack.push(snapshot());
     if (undoStack.length > 30) undoStack.shift();
     syncUndo();
   }
@@ -533,9 +718,10 @@
   // ───────────────────────── Build the week ─────────────────────────
 
   (function buildGutter() {
+    // --p is the label's position along the time axis; CSS maps it to top (portrait) or left (landscape).
     var html = '';
     for (var k = 0; k <= SLOTS; k += 2) {
-      html += '<span style="top:' + ((k / SLOTS) * 100).toFixed(3) + '%">' + fmtClock(slotStart(k), true) + '</span>';
+      html += '<span style="--p:' + ((k / SLOTS) * 100).toFixed(3) + '%">' + fmtClock(slotStart(k), true) + '</span>';
     }
     gutterEl.innerHTML = html;
   })();
@@ -568,53 +754,114 @@
     dayHeadEl.innerHTML = DAYS.map(function (d) {
       var c = dayCounts(d), marked = c.busy + c.avoid;
       var note = marked ? (marked / 2).toFixed(marked % 2 ? 1 : 0) + ' hr' : 'free';
-      return '<button data-open="' + d + '"' + (marked ? ' class="marked"' : '') + '>' + d + '<b>' + note + '</b></button>';
+      return '<button data-open="' + d + '"' + (marked ? ' class="marked"' : '') +
+        ' aria-label="' + DAY_LONG[d] + ', ' + note + '. Open to set single half-hours.">' + d + '<b>' + note + '</b></button>';
     }).join('');
   }
 
   // ───────────────────────── Painting ─────────────────────────
+  // Cells are located from coordinates, not from elementFromPoint, so the
+  // 3px gaps between days never drop a touch, and a fast swipe is filled in
+  // between samples instead of leaving holes. Works in both orientations.
 
-  var stroking = false, strokeTouched = null;
+  var stroke = null;
 
-  function applyAt(elm) {
-    if (!elm || !elm.classList || !elm.classList.contains('cell')) return;
-    var d = elm.dataset.d, k = +elm.dataset.k, key = d + ':' + k;
-    if (strokeTouched && strokeTouched[key]) return;
-    if (strokeTouched) strokeTouched[key] = 1;
+  function measure() {
+    var rects = Array.prototype.map.call(colsEl.children, function (c) { return c.getBoundingClientRect(); });
+    return { rects: rects, stacked: rects[1].top >= rects[0].bottom - 1 };
+  }
+
+  function cellAt(x, y) {
+    var r = stroke.rects, n = r.length, di = n - 1, i, rr, k;
+    if (!stroke.stacked) {
+      for (i = 0; i < n - 1; i++) if (x < (r[i].right + r[i + 1].left) / 2) { di = i; break; }
+      rr = r[di];
+      k = Math.floor((y - rr.top) / rr.height * SLOTS);
+    } else {
+      for (i = 0; i < n - 1; i++) if (y < (r[i].bottom + r[i + 1].top) / 2) { di = i; break; }
+      rr = r[di];
+      k = Math.floor((x - rr.left) / rr.width * SLOTS);
+    }
+    return { di: di, k: clamp(k, 0, SLOTS - 1) };
+  }
+
+  function setCell(di, k) {
+    var d = DAYS[di];
     if (grid[d][k] === brush) return;
     grid[d][k] = brush;
-    elm.dataset.s = String(brush);
+    colsEl.children[di].children[k].dataset.s = String(brush);
+    stroke.changed = true;
+  }
+
+  function strokeTo(c) {
+    var a = stroke.last, steps = Math.max(Math.abs(c.di - a.di), Math.abs(c.k - a.k));
+    for (var s = 1; s <= steps; s++) {
+      setCell(Math.round(a.di + (c.di - a.di) * s / steps), Math.round(a.k + (c.k - a.k) * s / steps));
+    }
+    stroke.last = c;
+  }
+
+  function showReadout(y) {
+    var a = stroke.anchor, c = stroke.last, when;
+    if (a.di === c.di) {
+      var lo = Math.min(a.k, c.k), hi = Math.max(a.k, c.k) + 1;
+      when = fmtRange(slotStart(lo), slotStart(hi));
+    } else {
+      when = fmtRange(slotStart(c.k), slotStart(c.k + 1));
+    }
+    readoutEl.innerHTML = '<i style="background:' + BRUSH_COLOR[brush] + '"></i>' +
+      DAYS[c.di] + ' ' + when + ' <span>' + BRUSH_NAME[brush] + '</span>';
+    // Keep the readout on the half of the grid the finger is not covering.
+    var wr = weekwrapEl.getBoundingClientRect();
+    readoutEl.classList.toggle('low', y < wr.top + wr.height / 2);
+    readoutEl.hidden = false;
   }
 
   colsEl.addEventListener('pointerdown', function (e) {
-    var t = document.elementFromPoint(e.clientX, e.clientY);
-    if (!t || !t.classList.contains('cell')) return;
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
     e.preventDefault();
     dismissHint();
-    pushUndo();
-    stroking = true;
-    strokeTouched = {};
+    stroke = measure();
+    stroke.id = e.pointerId;
+    stroke.changed = false;
+    stroke.before = snapshot();
+    var c = cellAt(e.clientX, e.clientY);
+    stroke.anchor = stroke.last = c;
+    setCell(c.di, c.k);
+    colsEl.classList.add('stroking');
     try { colsEl.setPointerCapture(e.pointerId); } catch (err) { /* capture is best-effort */ }
-    applyAt(t);
+    showReadout(e.clientY);
   });
 
   colsEl.addEventListener('pointermove', function (e) {
-    if (!stroking) return;
+    if (!stroke || e.pointerId !== stroke.id) return;
     e.preventDefault();
-    applyAt(document.elementFromPoint(e.clientX, e.clientY));
+    var list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+    if (list && list.length) list.forEach(function (ev) { strokeTo(cellAt(ev.clientX, ev.clientY)); });
+    else strokeTo(cellAt(e.clientX, e.clientY));
+    showReadout(e.clientY);
   });
 
   function endStroke() {
-    if (!stroking) return;
-    stroking = false;
-    strokeTouched = null;
-    everPainted = true;
-    renderDayHead();
-    persist();
+    if (!stroke) return;
+    if (stroke.changed) {
+      undoStack.push(stroke.before);
+      if (undoStack.length > 30) undoStack.shift();
+      syncUndo();
+      everPainted = true;
+      renderDayHead();
+      persist();
+    }
+    stroke = null;
+    colsEl.classList.remove('stroking');
+    readoutEl.hidden = true;
   }
   colsEl.addEventListener('pointerup', endStroke);
   colsEl.addEventListener('pointercancel', endStroke);
+  colsEl.addEventListener('lostpointercapture', endStroke);
   window.addEventListener('pointerup', endStroke);
+  window.addEventListener('resize', endStroke);
+  window.addEventListener('blur', endStroke);
 
   function dismissHint() {
     if (hintEl.hidden) return;
@@ -626,6 +873,9 @@
 
   function renderDay() {
     dayTitleEl.innerHTML = DAY_LONG[openDay] + '<span class="sub">Tap a row to set it with the current brush.</span>';
+    daySegEl.innerHTML = DAYS.map(function (d) {
+      return '<button data-day="' + d + '" aria-pressed="' + (d === openDay) + '">' + d + '</button>';
+    }).join('');
     var g = grid[openDay], html = '';
     for (var k = 0; k < SLOTS; k++) {
       var s = g[k], tag = s === 2 ? 'Busy' : s === 1 ? 'Rather not' : 'Free';
@@ -634,6 +884,14 @@
     }
     dayRowsEl.innerHTML = html;
   }
+
+  daySegEl.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-day]');
+    if (!b || b.dataset.day === openDay) return;
+    openDay = b.dataset.day;
+    renderDay();
+    dayRowsEl.parentNode.parentNode.scrollTop = 0;
+  });
 
   dayRowsEl.addEventListener('click', function (e) {
     var row = e.target.closest('.drow');
@@ -676,6 +934,7 @@
 
   function setBrush(b) {
     brush = b;
+    colsEl.dataset.brush = String(b);
     ['brushes', 'brushes2'].forEach(function (id) {
       Array.prototype.forEach.call(el(id).querySelectorAll('.brush'), function (btn) {
         btn.setAttribute('aria-pressed', String(+btn.dataset.b === b));
@@ -690,6 +949,25 @@
   });
   undoBtn.addEventListener('click', undo);
   undoBtn2.addEventListener('click', undo);
+
+  // ───────────────────────── Keyboard (desktop) ─────────────────────────
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target === nameInput) {
+      if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); }   // closes the phone keyboard too
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {
+      if (codePane.hidden) { e.preventDefault(); undo(); }
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'Escape' && !dayPane.hidden) { paintWeek(); show(paintPane); return; }
+    if (!codePane.hidden) return;
+    var map = { b: 2, a: 1, e: 0, '1': 2, '2': 1, '3': 0 };
+    var m = map[e.key.toLowerCase()];
+    if (m !== undefined) setBrush(m);
+  });
 
   // ───────────────────────── Send pane ─────────────────────────
 
@@ -744,6 +1022,7 @@
   }
 
   el('doneBtn').addEventListener('click', function () {
+    nameInput.blur();
     copied = false;
     renderSend();
     show(codePane);
@@ -833,6 +1112,7 @@
   // ───────────────────────── Panes and toast ─────────────────────────
 
   function show(pane) {
+    endStroke();
     [paintPane, dayPane, codePane].forEach(function (p) { p.hidden = p !== pane; });
     window.scrollTo(0, 0);
   }
@@ -852,6 +1132,9 @@
   paintWeek();
   syncUndo();
   if (!everPainted) hintEl.hidden = false;
-  if (!nameInput.value) setTimeout(function () { nameInput.focus(); }, 120);
+  // Autofocus only with a mouse: on a phone it would pop the keyboard over the grid.
+  if (!nameInput.value && FINE_POINTER) setTimeout(function () { nameInput.focus(); }, 120);
 })();
 </script>
+</body>
+</html>
